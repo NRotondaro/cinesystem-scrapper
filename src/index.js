@@ -3,24 +3,17 @@
 /**
  * CLI para scraping de programação do Cinesystem Maceió.
  * Uso:
- *   node src/index.js scrape [data]              → extrai filmes + sessões (API)
- *   node src/index.js scrape prices [data]       → extrai filmes + sessões + preços
- *   node src/index.js scrape prices debug [data] → com navegador visual para debugar
+ *   node src/index.js scrape [data]  → extrai filmes + sessões + preços
  *
  * Exemplos:
- *   node src/index.js scrape                         → hoje, sem preços (0.1s)
- *   node src/index.js scrape prices                 → hoje, com preços (68s)
- *   node src/index.js scrape 23/02/2026             → data específica, sem preços
- *   node src/index.js scrape prices 23/02/2026      → data específica, com preços
- *   node src/index.js scrape prices debug           → com navegador visual
- *   node src/index.js scrape prices debug 23/02/2026 → com navegador visual + data
+ *   node src/index.js scrape                  → hoje
+ *   node src/index.js scrape 23/02/2026       → data específica
  */
 
 import { scrape } from './scraper.js';
 import fs from 'fs/promises';
 
 const command = process.argv[2];
-const subArg = process.argv[3];
 
 async function saveState(data) {
   const stateFile = 'data/state.json';
@@ -30,34 +23,21 @@ async function saveState(data) {
 
 async function main() {
   if (!command || command === 'scrape') {
-    const withPrices = subArg === 'prices';
-    const debugMode = process.argv[4] === 'debug';
-    const date = withPrices
-      ? debugMode
-        ? process.argv[5]
-        : process.argv[4]
-      : subArg;
+    const date = process.argv[3];
 
     console.log('Extraindo programação...');
-    if (withPrices) console.log('(com extração de preços)');
-    if (debugMode) console.log('🔍 Modo DEBUG: Navegador visual será exibido');
+    if (date) console.log(`📅 Data: ${date}`);
 
     const result = await scrape({
-      headless: debugMode ? false : true,
       date,
-      extractPrices: withPrices,
     });
 
-    if (date && !withPrices) {
-      console.log(`Programação para: ${date}`);
-    }
-
     await saveState({ movies: result.movies, scrapedAt: result.scrapedAt });
-    console.log('Salvo em data/state.json');
-    console.log('Filmes:', result.movies.length);
+    console.log('✅ Salvo em data/state.json');
+    console.log(`📽️  Filmes: ${result.movies.length}`);
 
     if (result.noSessions) {
-      console.log('(Página indicou: sem sessões no momento)');
+      console.log('⚠️  Nenhuma sessão encontrada para esta data');
     }
 
     result.movies.forEach((m) => {
@@ -74,18 +54,18 @@ async function main() {
           return str;
         })
         .join(', ');
-      console.log(`  - ${m.name}: ${m.sessions.length} sessão(ões)`);
-      console.log(`    ${sessionsList}`);
+      console.log(`  🎬 ${m.name}: ${m.sessions.length} sessão(ões)`);
+      console.log(`     ${sessionsList}`);
     });
     return;
   }
 
-  console.error(`Comando desconhecido: ${command}`);
-  console.error('Use: node src/index.js scrape [prices] [data]');
+  console.error(`❌ Comando desconhecido: ${command}`);
+  console.error('Use: node src/index.js scrape [data]');
   process.exit(1);
 }
 
 main().catch((err) => {
-  console.error(err);
+  console.error('❌ Erro:', err.message);
   process.exit(2);
 });

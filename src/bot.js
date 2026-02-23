@@ -141,6 +141,7 @@ const setCommands = async () => {
   try {
     await bot.setMyCommands([
       { command: 'start', description: 'Iniciar e testar o bot' },
+      { command: 'atualizar', description: 'Buscar dados novos (ignora cache)' },
     ]);
     console.log('✅ Menu de comandos configurado');
   } catch (err) {
@@ -172,6 +173,46 @@ Escolha uma opção abaixo para começar:`;
   }
 });
 
+// Handler para /atualizar - força refresh ignorando cache
+bot.onText(/\/atualizar/, async (msg) => {
+  const chatId = msg.chat.id;
+
+  const loadingMsg = await bot.sendMessage(
+    chatId,
+    '🔄 Atualizando programação de hoje...',
+  );
+
+  try {
+    console.log(`📡 /atualizar solicitado por ${msg.from.username || chatId}`);
+
+    // Força novo fetch ignorando cache
+    const result = await scrape({
+      date: undefined,
+    });
+
+    // Salva cache atualizado
+    cache.setToday(result.movies, result.scrapedAt);
+
+    const response = formatMoviesForTelegram(result.movies, result.scrapedAt);
+
+    await bot.deleteMessage(chatId, loadingMsg.message_id).catch(() => {});
+    await bot.sendMessage(chatId, response, {
+      parse_mode: 'Markdown',
+    });
+
+    console.log(
+      `✅ /atualizar enviado para ${msg.from.username || chatId}`,
+    );
+  } catch (err) {
+    await bot.deleteMessage(chatId, loadingMsg.message_id).catch(() => {});
+    await bot.sendMessage(
+      chatId,
+      `❌ Erro ao atualizar: ${err.message}`,
+    );
+    console.error(`❌ Erro em /atualizar para ${chatId}:`, err.message);
+  }
+});
+
 // Handler para cliques nos botões (callback_query)
 bot.on('callback_query', async (query) => {
   const chatId = query.message.chat.id;
@@ -191,7 +232,7 @@ bot.on('callback_query', async (query) => {
   try {
     switch (callbackData) {
       case 'filmes_hoje': {
-        // Extrair filmes de hoje com preços
+        // Extrair filmes de hoje
         console.log(`⏳ Buscando filmes de hoje para ${chatId}...`);
 
         // Verificar cache primeiro
@@ -205,16 +246,15 @@ bot.on('callback_query', async (query) => {
           // Enviar mensagem de carregamento
           const loadingMsg = await bot.sendMessage(
             chatId,
-            '⏳ Buscando filmes de hoje com preços... Aguarde um pouco, no máximo 60 segundos!',
+            '⏳ Buscando filmes de hoje... Aguarde um momento!',
           );
 
           result = await scrape({
-            headless: true,
-            extractPrices: true,
+            date: undefined,
           });
 
           // Salvar no cache
-          await cache.setToday(result.movies, result.scrapedAt);
+          cache.setToday(result.movies, result.scrapedAt);
 
           // Deletar mensagem de carregamento
           try {
@@ -226,13 +266,13 @@ bot.on('callback_query', async (query) => {
 
         response = formatMoviesForTelegram(result.movies, result.scrapedAt);
         if (isFromCache) {
-          response += '\n\n_Dados fornecidos pelo cache (última atualização: hoje)_';
+          response += '\n\n_Dados fornecidos pelo cache_';
         }
         break;
       }
 
       case 'filmes_amanha': {
-        // Extrair filmes de amanhã com preços
+        // Extrair filmes de amanhã
         const tomorrowDate = getDateString(1);
         console.log(
           `⏳ Buscando filmes de amanhã (${tomorrowDate}) para ${chatId}...`,
@@ -249,17 +289,15 @@ bot.on('callback_query', async (query) => {
           // Enviar mensagem de carregamento
           const loadingMsg = await bot.sendMessage(
             chatId,
-            '⏳ Buscando filmes de amanhã com preços... Aguarde (~60s)',
+            '⏳ Buscando filmes de amanhã... Aguarde um momento!',
           );
 
           result = await scrape({
-            headless: true,
             date: tomorrowDate,
-            extractPrices: true,
           });
 
           // Salvar no cache
-          await cache.setAmanha(result.movies, result.scrapedAt);
+          cache.setAmanha(result.movies, result.scrapedAt);
 
           // Deletar mensagem de carregamento
           try {
@@ -271,7 +309,7 @@ bot.on('callback_query', async (query) => {
 
         response = formatMoviesForTelegram(result.movies, result.scrapedAt);
         if (isFromCache) {
-          response += '\n\n_Dados fornecidos pelo cache (última atualização: hoje)_';
+          response += '\n\n_Dados fornecidos pelo cache_';
         }
         break;
       }
