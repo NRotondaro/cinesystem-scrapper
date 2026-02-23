@@ -133,6 +133,70 @@ O código está organizado de forma limpa com funções bem definidas:
 - **Extração dinâmica** de preços via DOM evaluation
 - **Tratamento de erros** robusto
 
+## Bot Telegram
+
+Um bot interativo que fornece acesso à programação de filmes via Telegram.
+
+### Usar Localmente
+
+```bash
+npm run bot:listen
+```
+
+O bot iniciará com:
+
+- ✅ Health check na porta 3000 (ou PORT env)
+- 🤖 Polling contínuo para receber comandos
+- 🎬 Botões para filmes de hoje e amanhã
+- 💰 Extração automática de preços
+
+### Comandos Disponíveis
+
+- `/start` - Menu principal com botões
+- 🎬 Filmes de Hoje - Lista filmes de hoje com preços
+- 📅 Filmes de Amanhã - Lista filmes de amanhã com preços
+- ❓ Como Funciona - Informações do bot
+
+## Deploy no Render
+
+### Pré-requisitos
+
+1. Conta no [Render.com](https://render.com)
+2. Token do Bot Telegram (de @BotFather)
+
+### Passos
+
+1. **Conectar repositório Git ao Render**
+   - Novo "Web Service"
+   - Selecionar seu repositório GitHub
+
+2. **Configurar Build Command**
+
+   ```
+   npm run install-browsers
+   ```
+
+3. **Configurar Start Command**
+
+   ```
+   npm run bot:listen
+   ```
+
+4. **Adicionar Environment Variables**
+
+   ```
+   TELEGRAM_BOT_TOKEN=sua_token_aqui
+   ```
+
+5. **Deploy**
+   - Render detecará automaticamente PORT (default 3000)
+   - Bot iniciará e ficará online 24/7
+
+### Verificar Status
+
+- GET `https://seu-app.render.com/` deve retornar JSON com status
+- Teste o bot no Telegram enviando `/start`
+
 ## Autor
 
 Scraper construído com Playwright + Node.js nativo (sem dependências desnecessárias).
