@@ -10,6 +10,7 @@
     "check": "node src/index.js check",
     "telegram": "node src/index.js telegram",
     "telegram:refresh": "node src/index.js telegram refresh",
+    "bot:listen": "node src/bot.js",
     "install-browsers": "npx playwright install chromium"
   },
   "keywords": [
@@ -22,6 +23,7 @@
   "license": "MIT",
   "dependencies": {
     "dotenv": "^17.3.1",
+    "node-telegram-bot-api": "^0.67.0",
     "playwright": "^1.49.0"
   }
 }

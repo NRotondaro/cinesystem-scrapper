@@ -1,6 +1,19 @@
-# Cinesystem Maceió - Scraper de programação
+# Cinesystem Maceió - Scraper de Programação
 
-Programa em Node.js + Playwright que acessa a [programação do Cinesystem Maceió no Ingresso.com](https://www.ingresso.com/cinema/cinesystem-maceio?city=maceio), extrai filmes e horários, detecta mudanças (filme novo, sessão removida) e permite automação futura.
+Scraper de programação do [Cinesystem Maceió no Ingresso.com](https://www.ingresso.com/cinema/cinesystem-maceio?city=maceio).
+
+Extrai filmes, horários e preços (inteira + meia) usando **arquitetura híbrida**:
+
+- 🚀 **API** para filmes + horários (rápido: 0.1s)
+- 🎯 **Playwright** para preços dinâmicos (quando solicitado: 68s)
+
+## Características
+
+✅ **Filmes + Sessões via API** - Rápido e confiável
+✅ **Preços (inteira/meia)** - Extraídos dinamicamente
+✅ **Suporte a datas** - Consulte programação específica
+✅ **JSON estruturado** - Fácil de processar
+✅ **Sem autenticação** - API pública
 
 ## Requisitos
 
@@ -17,79 +30,109 @@ npx playwright install chromium
 
 ## Uso
 
-| Comando | Descrição |
-|--------|-----------|
-| `npm start` ou `node src/index.js` | Extrai programação, salva estado, compara com o anterior e exibe mudanças |
-| `npm run scrape` | Apenas extrai e salva em `data/state.json` (não altera o "previous") |
-| `npm run check` | Compara o estado atual com o anterior (sem fazer novo scrape) |
-| `npm run telegram` | Envia a programação do dia para o seu Telegram (usa o estado já salvo) |
-| `npm run telegram:refresh` | Atualiza a programação (scrape), salva e envia para o Telegram |
+### Comando Básico
+
+```bash
+node src/index.js scrape [precio] [data]
+```
 
 ### Exemplos
 
+#### 1. **Filmes + Horários (sem preços)** - Rápido
+
 ```bash
-# Primeira execução: só salva o estado
 node src/index.js scrape
-
-# Próximas execuções: scrape + diff (detecta mudanças)
-node src/index.js
-
-# Enviar programação do dia para o Telegram (estado já salvo)
-npm run telegram
-
-# Atualizar programação e enviar para o Telegram
-npm run telegram:refresh
+# Output: 15 filmes em ~0.1 segundos
 ```
 
-## Telegram
-
-Para receber a programação do dia no Telegram, configure o **token do bot** e o **chat ID**. Você pode usar um arquivo `.env` (recomendado) ou variáveis de ambiente no terminal.
-
-### Opção 1: arquivo `.env` (recomendado)
-
-1. Copie o exemplo e edite com seus dados:
-   ```bash
-   cp .env.example .env
-   ```
-2. No `.env`, preencha:
-   - **TELEGRAM_BOT_TOKEN** — Crie um bot com [@BotFather](https://t.me/BotFather) (`/newbot`) e cole o token.
-   - **TELEGRAM_CHAT_ID** — ID do chat para onde o bot vai enviar (veja abaixo como obter).
-
-O arquivo `.env` já está no `.gitignore`; não será commitado.
-
-### Opção 2: export no terminal
+#### 2. **Filmes + Horários + Preços** - Completo
 
 ```bash
-export TELEGRAM_BOT_TOKEN="123456:ABC-DEF..."
-export TELEGRAM_CHAT_ID="987654321"
-npm run telegram
+node src/index.js scrape prices
+# Output: 15 filmes + 32 sessões com preços em ~68 segundos
 ```
 
-Ou em uma linha: `TELEGRAM_BOT_TOKEN="..." TELEGRAM_CHAT_ID="..." npm run telegram`
+#### 3. **Data Específica** (sem preços)
 
-### Como obter o Chat ID
+```bash
+node src/index.js scrape 23/02/2026
+# Output: programação para 23 de fevereiro
+```
 
-- Envie uma mensagem qualquer para o seu bot (ou adicione o bot a um grupo e envie uma mensagem no grupo).
-- Acesse no navegador: `https://api.telegram.org/bot<SEU_TOKEN>/getUpdates`.
-- Na resposta JSON, procure `"chat":{"id": 123456789}` — esse número é o `TELEGRAM_CHAT_ID`.
+#### 4. **Data + Preços**
 
-A mensagem enviada lista todos os filmes e horários do dia em formato legível (HTML no Telegram).
+```bash
+node src/index.js scrape prices 23/02/2026
+# Nota: Preços só estão disponíveis para hoje (Ingresso.com)
+```
 
-## Detecção de mudanças
+## Saída
 
-- **Filmes novos**: filmes que aparecem na programação e não estavam no estado anterior.
-- **Filmes removidos**: filmes que sumiram da programação.
-- **Sessões adicionadas/removidas**: horários novos ou removidos por filme.
+Os dados são salvos em `data/state.json`:
 
-O estado é salvo em:
+```json
+{
+  "movies": [
+    {
+      "name": "Avatar: Fogo E Cinzas",
+      "sessions": [
+        {
+          "time": "20:45",
+          "sessionId": "84078366",
+          "priceInteira": 55.86,
+          "priceMeia": 27.93,
+          "gratuito": false
+        }
+      ]
+    }
+  ],
+  "scrapedAt": "2026-02-22T13:34:38.702Z"
+}
+```
 
-- `data/state.json` — programação atual
-- `data/previous.json` — programação da última execução (usada para o diff)
+## Arquitetura
 
-## Automação
+### `src/api.js` - Cliente da API Ingresso
 
-Você pode rodar o scraper em um cron (Linux/macOS): por exemplo, a cada 6 horas. Quando houver mudanças, o script sai com código 1, aí você pode encadear com um script que envia notificação (Telegram, e-mail, etc.).
+- Acessa `https://api-content.ingresso.com`
+- Descomprime respostas (gzip/deflate/brotli)
+- Deduplica filmes por nome
+- Filtra por data ou retorna apenas hoje
 
-## Observação
+### `src/scraper.js` - Orquestração
 
-Se o site exibir "Ainda não temos sessões", o scraper retorna lista vazia e trata como estado válido. Quando o cinema voltar a exibir sessões, a próxima execução detectará as mudanças.
+- Obtém filmes + sessões via API
+- Se `extractPrices=true`, abre Playwright para extrair preços do modal
+- Retorna dados estruturados
+
+### `src/index.js` - CLI
+
+- Interface de linha de comando
+- Salva resultado em JSON
+- Exibe programação formatada
+
+## Performance
+
+| Operação                | Tempo  | Nota                             |
+| ----------------------- | ------ | -------------------------------- |
+| Filmes + Sessões (API)  | ~0.1s  | Muito rápido                     |
+| Com Preços (Playwright) | ~68s   | Necessário para preços dinâmicos |
+| Mudança de data         | +5-10s | Dependendo de filmes disponíveis |
+
+## Limitações
+
+- ⚠️ **Preços para datas futuras**: O site não exibe botões de preço para datas além de hoje
+- ⚠️ **Sessões ausentes**: Se o site mostrar "Sem sessões", retorna lista vazia
+
+## Desenvolvimento
+
+O código está organizado de forma limpa com funções bem definidas:
+
+- **API requests** com suporte a compressão
+- **Deduplicação** automática de filmes
+- **Extração dinâmica** de preços via DOM evaluation
+- **Tratamento de erros** robusto
+
+## Autor
+
+Scraper construído com Playwright + Node.js nativo (sem dependências desnecessárias).
