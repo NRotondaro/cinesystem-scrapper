@@ -9,8 +9,9 @@
 import TelegramBot from 'node-telegram-bot-api';
 import express from 'express';
 import { config } from 'dotenv';
-import { scrape } from './scraper.js';
-import MovieCache from './cache.js';
+import { fetchNormalized } from './api.js';
+import { denormalize } from './normalize.js';
+import NormalizedCache from './cache.js';
 
 config();
 
@@ -22,10 +23,9 @@ if (!token) {
 
 const bot = new TelegramBot(token, { polling: true });
 
-// Configurar Express Server
 const PORT = process.env.PORT || 3000;
 const app = express();
-const cache = new MovieCache();
+const cache = new NormalizedCache();
 
 // Health check endpoint
 app.get('/', (req, res) => {
@@ -35,15 +35,35 @@ app.get('/', (req, res) => {
   });
 });
 
-// Função auxiliar: Calcula data em formato DD/MM/YYYY
 const getDateString = (daysOffset = 0) => {
   const date = new Date();
   date.setDate(date.getDate() + daysOffset);
   const day = String(date.getDate()).padStart(2, '0');
   const month = String(date.getMonth() + 1).padStart(2, '0');
   const year = date.getFullYear();
-  return `${day}/${month}/${year}`;
+  return `${year}-${month}-${day}`;
 };
+
+/**
+ * Busca filmes para uma data, usando cache normalizado quando disponível.
+ * @returns {{ movies: Array, date: string, fromCache: boolean }}
+ */
+async function getMoviesForDate(date = null) {
+  const targetDate = date || getDateString(0);
+
+  const cached = cache.getSessions(targetDate);
+  if (cached) {
+    const movies = denormalize(cache.getAllMovies(), cached.items);
+    return { movies, date: targetDate, fromCache: true };
+  }
+
+  const normalized = await fetchNormalized(date);
+  cache.mergeMovies(normalized.movies);
+  cache.setSessions(normalized.date, normalized.sessions, normalized.fetchedAt);
+
+  const movies = denormalize(normalized.movies, normalized.sessions);
+  return { movies, date: normalized.date, fromCache: false };
+}
 
 // Função auxiliar: Formata filmes para exibição no Telegram
 const formatMoviesForTelegram = (movies, dateStr) => {
@@ -185,30 +205,20 @@ bot.onText(/\/atualizar/, async (msg) => {
   try {
     console.log(`📡 /atualizar solicitado por ${msg.from.username || chatId}`);
 
-    // Força novo fetch ignorando cache
-    const result = await scrape({
-      date: undefined,
-    });
+    const normalized = await fetchNormalized();
+    cache.mergeMovies(normalized.movies);
+    cache.setSessions(normalized.date, normalized.sessions, normalized.fetchedAt);
 
-    // Salva cache atualizado
-    cache.setToday(result.movies, result.scrapedAt);
-
-    const response = formatMoviesForTelegram(result.movies, result.scrapedAt);
+    const movies = denormalize(normalized.movies, normalized.sessions);
+    const response = formatMoviesForTelegram(movies, normalized.date);
 
     await bot.deleteMessage(chatId, loadingMsg.message_id).catch(() => {});
-    await bot.sendMessage(chatId, response, {
-      parse_mode: 'Markdown',
-    });
+    await bot.sendMessage(chatId, response, { parse_mode: 'Markdown' });
 
-    console.log(
-      `✅ /atualizar enviado para ${msg.from.username || chatId}`,
-    );
+    console.log(`✅ /atualizar enviado para ${msg.from.username || chatId}`);
   } catch (err) {
     await bot.deleteMessage(chatId, loadingMsg.message_id).catch(() => {});
-    await bot.sendMessage(
-      chatId,
-      `❌ Erro ao atualizar: ${err.message}`,
-    );
+    await bot.sendMessage(chatId, `❌ Erro ao atualizar: ${err.message}`);
     console.error(`❌ Erro em /atualizar para ${chatId}:`, err.message);
   }
 });
@@ -232,83 +242,51 @@ bot.on('callback_query', async (query) => {
   try {
     switch (callbackData) {
       case 'filmes_hoje': {
-        // Extrair filmes de hoje
         console.log(`⏳ Buscando filmes de hoje para ${chatId}...`);
 
-        // Verificar cache primeiro
-        let result = cache.getToday();
-        let isFromCache = false;
-
-        if (result) {
-          console.log('💾 Filmes de hoje obtidos do cache');
-          isFromCache = true;
-        } else {
-          // Enviar mensagem de carregamento
-          const loadingMsg = await bot.sendMessage(
+        let loadingMsg = null;
+        const cachedToday = cache.getSessions(getDateString(0));
+        if (!cachedToday) {
+          loadingMsg = await bot.sendMessage(
             chatId,
             '⏳ Buscando filmes de hoje... Aguarde um momento!',
           );
-
-          result = await scrape({
-            date: undefined,
-          });
-
-          // Salvar no cache
-          cache.setToday(result.movies, result.scrapedAt);
-
-          // Deletar mensagem de carregamento
-          try {
-            await bot.deleteMessage(chatId, loadingMsg.message_id);
-          } catch (e) {
-            // Ignorar erro se não conseguir deletar
-          }
         }
 
-        response = formatMoviesForTelegram(result.movies, result.scrapedAt);
-        if (isFromCache) {
+        const today = await getMoviesForDate();
+
+        if (loadingMsg) {
+          await bot.deleteMessage(chatId, loadingMsg.message_id).catch(() => {});
+        }
+
+        response = formatMoviesForTelegram(today.movies, today.date);
+        if (today.fromCache) {
           response += '\n\n_Dados fornecidos pelo cache_';
         }
         break;
       }
 
       case 'filmes_amanha': {
-        // Extrair filmes de amanhã
         const tomorrowDate = getDateString(1);
-        console.log(
-          `⏳ Buscando filmes de amanhã (${tomorrowDate}) para ${chatId}...`,
-        );
+        console.log(`⏳ Buscando filmes de amanhã (${tomorrowDate}) para ${chatId}...`);
 
-        // Verificar cache primeiro
-        let result = cache.getAmanha();
-        let isFromCache = false;
-
-        if (result) {
-          console.log('💾 Filmes de amanhã obtidos do cache');
-          isFromCache = true;
-        } else {
-          // Enviar mensagem de carregamento
-          const loadingMsg = await bot.sendMessage(
+        let loadingMsg = null;
+        const cachedTomorrow = cache.getSessions(tomorrowDate);
+        if (!cachedTomorrow) {
+          loadingMsg = await bot.sendMessage(
             chatId,
             '⏳ Buscando filmes de amanhã... Aguarde um momento!',
           );
-
-          result = await scrape({
-            date: tomorrowDate,
-          });
-
-          // Salvar no cache
-          cache.setAmanha(result.movies, result.scrapedAt);
-
-          // Deletar mensagem de carregamento
-          try {
-            await bot.deleteMessage(chatId, loadingMsg.message_id);
-          } catch (e) {
-            // Ignorar erro se não conseguir deletar
-          }
         }
 
-        response = formatMoviesForTelegram(result.movies, result.scrapedAt);
-        if (isFromCache) {
+        const tomorrow = await getMoviesForDate(tomorrowDate);
+
+        if (loadingMsg) {
+          await bot.deleteMessage(chatId, loadingMsg.message_id).catch(() => {});
+        }
+
+        response = formatMoviesForTelegram(tomorrow.movies, tomorrow.date);
+        if (tomorrow.fromCache) {
           response += '\n\n_Dados fornecidos pelo cache_';
         }
         break;

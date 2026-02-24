@@ -57,7 +57,7 @@ O bot inicia com:
 
 ```bash
 npm start                    # Programação de hoje
-npm start -- 25/02/2026     # Data específica (DD/MM/YYYY)
+npm start -- 2026-02-25     # Data específica (YYYY-MM-DD)
 ```
 
 A saída é salva em `data/state.json`.
@@ -108,7 +108,7 @@ src/
 
 ### `index.js` — CLI
 
-- Aceita data opcional como argumento (`DD/MM/YYYY`)
+- Aceita data opcional como argumento (`YYYY-MM-DD`)
 - Salva resultado em `data/state.json`
 - Exibe programação formatada no terminal
 
