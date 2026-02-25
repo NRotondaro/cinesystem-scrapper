@@ -23,8 +23,9 @@ if (!token) {
 
 const bot = new TelegramBot(token, { polling: true });
 
-const PORT = process.env.PORT || 3000;
+const PORT = process.env.PORT || 8080;
 const app = express();
+let server;
 const cache = new NormalizedCache();
 
 // --- Configuração de cinemas ---
@@ -530,7 +531,7 @@ bot.on('polling_error', (err) => {
   await cache.load();
   await setCommands();
 
-  app.listen(PORT, () => {
+  server = app.listen(PORT, () => {
     console.log(`✅ Servidor escutando na porta ${PORT}`);
     console.log(`📡 Health check: http://localhost:${PORT}/`);
   });
@@ -539,12 +540,21 @@ bot.on('polling_error', (err) => {
   console.log('Aguardando mensagens. Envie /start para começar.');
 })();
 
-// Graceful shutdown
-process.on('SIGINT', () => {
+// Graceful shutdown (SIGTERM em container, SIGINT local)
+let shuttingDown = false;
+function shutdown() {
+  if (shuttingDown) return;
+  shuttingDown = true;
   console.log('\n👋 Desligando bot...');
   bot.stopPolling();
-  app.close(() => {
-    console.log('✅ Servidor Express encerrado');
+  if (server) {
+    server.close(() => {
+      console.log('✅ Servidor encerrado');
+      process.exit(0);
+    });
+  } else {
     process.exit(0);
-  });
-});
+  }
+}
+process.on('SIGINT', shutdown);
+process.on('SIGTERM', shutdown);
