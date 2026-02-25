@@ -20,7 +20,7 @@ const CACHE_FILE = 'data/cache.json';
 
 class NormalizedCache {
   constructor() {
-    this.data = { movies: {}, sessions: {}, upcoming: null, moviesUpdatedAt: null };
+    this.data = { movies: {}, sessions: {}, upcoming: {}, moviesUpdatedAt: null };
   }
 
   getMaceioDate(offsetDays = 0) {
@@ -75,21 +75,25 @@ class NormalizedCache {
   }
 
   /**
-   * Salva sessões dinâmicas para uma data específica.
+   * Salva sessões dinâmicas para uma data e teatro específicos.
    */
-  setSessions(date, sessions, fetchedAt) {
-    this.data.sessions[date] = { fetchedAt, items: sessions };
+  setSessions(date, sessions, fetchedAt, theaterId = '1162') {
+    if (!this.data.sessions[theaterId]) this.data.sessions[theaterId] = {};
+    this.data.sessions[theaterId][date] = { fetchedAt, items: sessions };
     this.purgeOldSessions();
     this.save();
-    console.log(`💾 ${sessions.length} sessão(ões) salva(s) para ${date}`);
+    console.log(`💾 ${sessions.length} sessão(ões) salva(s) para ${date} (teatro ${theaterId})`);
   }
 
   /**
-   * Retorna sessões de uma data se o cache for válido (mesmo dia em Maceió).
+   * Retorna sessões de uma data/teatro se o cache for válido (mesmo dia em Maceió).
    * @returns {{ items: Array, fetchedAt: string } | null}
    */
-  getSessions(date) {
-    const cached = this.data.sessions[date];
+  getSessions(date, theaterId = '1162') {
+    const theaterSessions = this.data.sessions[theaterId];
+    if (!theaterSessions) return null;
+
+    const cached = theaterSessions[date];
     if (!cached?.fetchedAt) return null;
 
     const cachedDay = cached.fetchedAt.split('T')[0];
@@ -97,11 +101,11 @@ class NormalizedCache {
 
     if (cachedDay !== today) {
       console.log(`📅 Cache de sessões para ${date} expirado (${cachedDay} → ${today})`);
-      delete this.data.sessions[date];
+      delete theaterSessions[date];
       return null;
     }
 
-    console.log(`✅ Cache hit: sessões de ${date}`);
+    console.log(`✅ Cache hit: sessões de ${date} (teatro ${theaterId})`);
     return cached;
   }
 
@@ -120,43 +124,50 @@ class NormalizedCache {
   }
 
   /**
-   * Salva próximos lançamentos no cache.
+   * Salva próximos lançamentos no cache para um teatro específico.
    */
-  setUpcoming(items, fetchedAt) {
-    this.data.upcoming = { fetchedAt, items };
+  setUpcoming(items, fetchedAt, theaterId = '1162') {
+    if (!this.data.upcoming || typeof this.data.upcoming !== 'object') {
+      this.data.upcoming = {};
+    }
+    this.data.upcoming[theaterId] = { fetchedAt, items };
     this.save();
-    console.log(`💾 ${items.length} lançamento(s) salvo(s) no cache`);
+    console.log(`💾 ${items.length} lançamento(s) salvo(s) no cache (teatro ${theaterId})`);
   }
 
   /**
-   * Retorna próximos lançamentos se o cache for válido (mesmo dia em Maceió).
+   * Retorna próximos lançamentos de um teatro se o cache for válido (mesmo dia em Maceió).
    * @returns {{ items: Array, fetchedAt: string } | null}
    */
-  getUpcoming() {
-    const cached = this.data.upcoming;
+  getUpcoming(theaterId = '1162') {
+    const cached = this.data.upcoming?.[theaterId];
     if (!cached?.fetchedAt) return null;
 
     const cachedDay = cached.fetchedAt.split('T')[0];
     const today = this.getMaceioDate(0);
 
     if (cachedDay !== today) {
-      console.log(`📅 Cache de lançamentos expirado (${cachedDay} → ${today})`);
-      this.data.upcoming = null;
+      console.log(`📅 Cache de lançamentos expirado para teatro ${theaterId} (${cachedDay} → ${today})`);
+      delete this.data.upcoming[theaterId];
       return null;
     }
 
-    console.log('✅ Cache hit: próximos lançamentos');
+    console.log(`✅ Cache hit: próximos lançamentos (teatro ${theaterId})`);
     return cached;
   }
 
   /**
-   * Remove sessões de datas passadas.
+   * Remove sessões de datas passadas para todos os teatros.
    */
   purgeOldSessions() {
     const today = this.getMaceioDate(0);
-    for (const date of Object.keys(this.data.sessions)) {
-      if (date < today) {
-        delete this.data.sessions[date];
+    for (const theaterId of Object.keys(this.data.sessions)) {
+      const theaterSessions = this.data.sessions[theaterId];
+      if (typeof theaterSessions !== 'object' || theaterSessions === null) continue;
+      for (const date of Object.keys(theaterSessions)) {
+        if (date < today) {
+          delete theaterSessions[date];
+        }
       }
     }
   }

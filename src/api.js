@@ -3,9 +3,7 @@ import { normalizeSessionsResponse, normalizeUpcomingFromSessions } from './norm
 
 const BASE_URL = 'https://api-content.ingresso.com';
 const CITY_ID = 53; // Maceió
-const THEATER_ID = 1162; // Cinesystem Maceió
-/* const THEATER_ID = 638; // Kinoplex Maceió Shoppin
-const THEATER_ID = 852; // Centerplex Pátio Maceió */
+const DEFAULT_THEATER_ID = 1162;
 
 const HEADERS = {
   'User-Agent':
@@ -39,12 +37,12 @@ function resolveTargetDate(date) {
  * @param {string|null} date - Data YYYY-MM-DD (null = hoje)
  * @returns {Promise<{ movies, sessions, date, fetchedAt }>} Dados normalizados
  */
-export async function fetchNormalized(date = null) {
+export async function fetchNormalized(date = null, theaterId = DEFAULT_THEATER_ID) {
   const targetDate = await resolveTargetDate(date);
 
-  console.log(`🎬 Buscando sessões para ${targetDate}...`);
+  console.log(`🎬 Buscando sessões para ${targetDate} (teatro ${theaterId})...`);
   const { data: response } = await axios.get(
-    `${BASE_URL}/v0/sessions/city/${CITY_ID}/theater/${THEATER_ID}/partnership/home/groupBy/sessionType`,
+    `${BASE_URL}/v0/sessions/city/${CITY_ID}/theater/${theaterId}/partnership/home/groupBy/sessionType`,
     { params: { date: targetDate }, headers: HEADERS },
   );
 
@@ -67,11 +65,11 @@ export async function fetchNormalized(date = null) {
  *
  * @returns {Promise<{ items: Array, fetchedAt: string }>}
  */
-export async function fetchUpcoming() {
-  console.log('🆕 Buscando próximos lançamentos do Cinesystem Maceió...');
+export async function fetchUpcoming(theaterId = DEFAULT_THEATER_ID) {
+  console.log(`🆕 Buscando próximos lançamentos (teatro ${theaterId})...`);
 
   const { data: response } = await axios.get(
-    `${BASE_URL}/v0/sessions/city/${CITY_ID}/theater/${THEATER_ID}`,
+    `${BASE_URL}/v0/sessions/city/${CITY_ID}/theater/${theaterId}`,
     { headers: HEADERS },
   );
 
