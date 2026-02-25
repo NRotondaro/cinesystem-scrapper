@@ -10,6 +10,7 @@ import TelegramBot from 'node-telegram-bot-api';
 import express from 'express';
 import { config } from 'dotenv';
 import { scrape } from './scraper.js';
+import MovieCache from './cache.js';
 
 config();
 
@@ -24,6 +25,7 @@ const bot = new TelegramBot(token, { polling: true });
 // Configurar Express Server
 const PORT = process.env.PORT || 3000;
 const app = express();
+const cache = new MovieCache();
 
 // Health check endpoint
 app.get('/', (req, res) => {
@@ -192,24 +194,39 @@ bot.on('callback_query', async (query) => {
         // Extrair filmes de hoje com preços
         console.log(`⏳ Buscando filmes de hoje para ${chatId}...`);
 
-        // Enviar mensagem de carregamento
-        const loadingMsg = await bot.sendMessage(
-          chatId,
-          '⏳ Buscando filmes de hoje com preços... Aguarde um pouco, no máximo 60 segundos!',
-        );
+        // Verificar cache primeiro
+        let result = cache.getToday();
+        let isFromCache = false;
 
-        const result = await scrape({
-          headless: true,
-          extractPrices: true,
-        });
+        if (result) {
+          console.log('💾 Filmes de hoje obtidos do cache');
+          isFromCache = true;
+        } else {
+          // Enviar mensagem de carregamento
+          const loadingMsg = await bot.sendMessage(
+            chatId,
+            '⏳ Buscando filmes de hoje com preços... Aguarde um pouco, no máximo 60 segundos!',
+          );
+
+          result = await scrape({
+            headless: true,
+            extractPrices: true,
+          });
+
+          // Salvar no cache
+          await cache.setToday(result.movies, result.scrapedAt);
+
+          // Deletar mensagem de carregamento
+          try {
+            await bot.deleteMessage(chatId, loadingMsg.message_id);
+          } catch (e) {
+            // Ignorar erro se não conseguir deletar
+          }
+        }
 
         response = formatMoviesForTelegram(result.movies, result.scrapedAt);
-
-        // Deletar mensagem de carregamento
-        try {
-          await bot.deleteMessage(chatId, loadingMsg.message_id);
-        } catch (e) {
-          // Ignorar erro se não conseguir deletar
+        if (isFromCache) {
+          response += '\n\n_Dados fornecidos pelo cache (última atualização: hoje)_';
         }
         break;
       }
@@ -221,25 +238,40 @@ bot.on('callback_query', async (query) => {
           `⏳ Buscando filmes de amanhã (${tomorrowDate}) para ${chatId}...`,
         );
 
-        // Enviar mensagem de carregamento
-        const loadingMsg = await bot.sendMessage(
-          chatId,
-          '⏳ Buscando filmes de amanhã com preços... Aguarde (~60s)',
-        );
+        // Verificar cache primeiro
+        let result = cache.getAmanha();
+        let isFromCache = false;
 
-        const result = await scrape({
-          headless: true,
-          date: tomorrowDate,
-          extractPrices: true,
-        });
+        if (result) {
+          console.log('💾 Filmes de amanhã obtidos do cache');
+          isFromCache = true;
+        } else {
+          // Enviar mensagem de carregamento
+          const loadingMsg = await bot.sendMessage(
+            chatId,
+            '⏳ Buscando filmes de amanhã com preços... Aguarde (~60s)',
+          );
+
+          result = await scrape({
+            headless: true,
+            date: tomorrowDate,
+            extractPrices: true,
+          });
+
+          // Salvar no cache
+          await cache.setAmanha(result.movies, result.scrapedAt);
+
+          // Deletar mensagem de carregamento
+          try {
+            await bot.deleteMessage(chatId, loadingMsg.message_id);
+          } catch (e) {
+            // Ignorar erro se não conseguir deletar
+          }
+        }
 
         response = formatMoviesForTelegram(result.movies, result.scrapedAt);
-
-        // Deletar mensagem de carregamento
-        try {
-          await bot.deleteMessage(chatId, loadingMsg.message_id);
-        } catch (e) {
-          // Ignorar erro se não conseguir deletar
+        if (isFromCache) {
+          response += '\n\n_Dados fornecidos pelo cache (última atualização: hoje)_';
         }
         break;
       }
@@ -307,6 +339,7 @@ bot.on('polling_error', (err) => {
 
 // Inicializar
 (async () => {
+  await cache.load();
   await setCommands();
 
   // Iniciar servidor Express
