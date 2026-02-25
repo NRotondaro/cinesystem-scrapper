@@ -8,11 +8,12 @@
  *
  * Exemplos:
  *   node src/index.js                 → hoje (segundo API / fuso de Maceió)
- *   node src/index.js 23/02/2026      → data específica (DD/MM/YYYY)
+ *   node src/index.js 2026-02-23      → data específica (YYYY-MM-DD)
  */
 
 import fs from 'fs/promises';
-import { getMoviesWithPrices } from './api.js';
+import { fetchNormalized } from './api.js';
+import { denormalize } from './normalize.js';
 
 async function saveState(data) {
   const stateFile = 'data/state.json';
@@ -25,19 +26,20 @@ async function main() {
 
   console.log('📡 Consultando programação do Cinesystem Maceió via API...');
   if (date) {
-    console.log(`📅 Data solicitada: ${date} (DD/MM/YYYY)`);
+    console.log(`📅 Data solicitada: ${date} (YYYY-MM-DD)`);
   } else {
     console.log('📅 Nenhuma data informada, usando data atual da API.');
   }
 
-  const movies = await getMoviesWithPrices(date);
-  const scrapedAt = new Date().toISOString();
+  const normalized = await fetchNormalized(date);
+  const movies = denormalize(normalized.movies, normalized.sessions);
+  const scrapedAt = normalized.fetchedAt;
 
   await saveState({ movies, scrapedAt });
   console.log('✅ Resultado salvo em data/state.json');
   console.log(`📽️  Filmes: ${movies.length}`);
 
-  if (!movies || movies.length === 0) {
+  if (movies.length === 0) {
     console.log('⚠️  Nenhuma sessão encontrada para esta data');
     return;
   }
@@ -45,13 +47,9 @@ async function main() {
   movies.forEach((m) => {
     const sessionsList = (m.sessions || [])
       .map((s) => {
-        if (typeof s === 'string') return s;
         let str = s.time || '';
-        if (s.priceInteira !== undefined && s.priceInteira !== null) {
+        if (s.priceInteira != null) {
           str += ` (R$ ${Number(s.priceInteira).toFixed(2)})`;
-        }
-        if (s.priceMeia !== undefined && s.priceMeia !== null) {
-          str += ` / meia: R$ ${Number(s.priceMeia).toFixed(2)})`;
         }
         return str;
       })
