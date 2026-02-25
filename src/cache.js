@@ -1,11 +1,10 @@
 /**
  * Sistema de cache para filmes do Cinesystem
  * Armazena resultados de scraping em arquivo JSON
- * Expira automaticamente à meia-noite
+ * Expira quando virada o dia (compara data do scrapedAt com data atual)
  */
 
-import fs from 'fs/promises';
-import path from 'path';
+import fs from 'fs';
 
 class MovieCache {
   constructor() {
@@ -16,12 +15,15 @@ class MovieCache {
   /**
    * Carrega cache do arquivo
    */
-  async load() {
+  load() {
     try {
-      const data = await fs.readFile(this.cacheFile, 'utf-8');
-      this.cache = JSON.parse(data);
+      if (fs.existsSync(this.cacheFile)) {
+        const data = fs.readFileSync(this.cacheFile, 'utf-8');
+        this.cache = JSON.parse(data);
+      }
     } catch (err) {
       // Arquivo não existe ou é inválido - inicializa vazio
+      console.warn('⚠️  Erro ao carregar cache:', err.message);
       this.cache = { hoje: null, amanha: null };
     }
   }
@@ -29,10 +31,12 @@ class MovieCache {
   /**
    * Salva cache no arquivo
    */
-  async save() {
+  save() {
     try {
-      await fs.mkdir('data', { recursive: true });
-      await fs.writeFile(
+      if (!fs.existsSync('data')) {
+        fs.mkdirSync('data', { recursive: true });
+      }
+      fs.writeFileSync(
         this.cacheFile,
         JSON.stringify(this.cache, null, 2),
         'utf-8'
@@ -43,38 +47,54 @@ class MovieCache {
   }
 
   /**
-   * Verifica se o cache expirou (passou de meia-noite)
-   * @param {string} expiresAt - data ISO em que o cache expira
-   * @returns {boolean} true se expirou
+   * Extrai data do formato ISO (YYYY-MM-DD)
+   * @param {string} isoDateTime - Ex: 2026-02-23T15:29:40.529Z
+   * @returns {string} - Ex: 2026-02-23
    */
-  isExpired(expiresAt) {
-    if (!expiresAt) return true;
-    const now = new Date();
-    const expireDate = new Date(expiresAt);
-    return now >= expireDate;
+  extractDateFromISO(isoDateTime) {
+    if (!isoDateTime) return null;
+    return isoDateTime.split('T')[0];
   }
 
   /**
-   * Calcula timestamp de meia-noite (próximas 00:00)
-   * @returns {string} data ISO
+   * Verifica se cache ainda é válido para hoje
+   * Compara a data do scrapedAt com a data atual
+   * @param {object} cached - { movies, scrapedAt }
+   * @param {boolean} forceRefresh - ignora data e força novo fetch
+   * @returns {boolean} true se cache é válido
    */
-  getMidnightTimestamp() {
-    const tomorrow = new Date();
-    tomorrow.setDate(tomorrow.getDate() + 1);
-    tomorrow.setHours(0, 0, 0, 0);
-    return tomorrow.toISOString();
+  isCacheValid(cached, forceRefresh = false) {
+    if (!cached || !cached.scrapedAt) return false;
+    if (forceRefresh) return false;
+
+    const cachedDate = this.extractDateFromISO(cached.scrapedAt);
+    const todayDate = new Date().toISOString().split('T')[0];
+
+    return cachedDate === todayDate;
   }
 
   /**
    * Retorna filmes de hoje do cache (se válido)
+   * @param {boolean} forceRefresh - ignora cache válido, força novo fetch
    * @returns {object|null} { movies, scrapedAt } ou null se expirado
    */
-  getToday() {
+  getToday(forceRefresh = false) {
     if (!this.cache.hoje) return null;
-    if (this.isExpired(this.cache.hoje.expiresAt)) {
-      this.cache.hoje = null;
+
+    if (!this.isCacheValid(this.cache.hoje, forceRefresh)) {
+      const cachedDate = this.extractDateFromISO(this.cache.hoje.scrapedAt);
+      const todayDate = new Date().toISOString().split('T')[0];
+
+      if (forceRefresh) {
+        console.log('🔄 Force refresh ativado, buscando dados novos...');
+      } else if (cachedDate !== todayDate) {
+        console.log(`📅 Cache expirado (${cachedDate} → ${todayDate}), buscando dados novos...`);
+      }
+
       return null;
     }
+
+    console.log('✅ Usando cache válido para hoje');
     return {
       movies: this.cache.hoje.movies,
       scrapedAt: this.cache.hoje.scrapedAt,
@@ -83,14 +103,28 @@ class MovieCache {
 
   /**
    * Retorna filmes de amanhã do cache (se válido)
+   * @param {boolean} forceRefresh - ignora cache válido, força novo fetch
    * @returns {object|null} { movies, scrapedAt } ou null se expirado
    */
-  getAmanha() {
+  getAmanha(forceRefresh = false) {
     if (!this.cache.amanha) return null;
-    if (this.isExpired(this.cache.amanha.expiresAt)) {
-      this.cache.amanha = null;
+
+    if (!this.isCacheValid(this.cache.amanha, forceRefresh)) {
+      const cachedDate = this.extractDateFromISO(this.cache.amanha.scrapedAt);
+      const tomorrowDate = new Date();
+      tomorrowDate.setDate(tomorrowDate.getDate() + 1);
+      const tomorrowDateStr = tomorrowDate.toISOString().split('T')[0];
+
+      if (forceRefresh) {
+        console.log('🔄 Force refresh ativado, buscando dados novos...');
+      } else if (cachedDate !== tomorrowDateStr) {
+        console.log(`📅 Cache expirado, buscando dados novos...`);
+      }
+
       return null;
     }
+
+    console.log('✅ Usando cache válido para amanhã');
     return {
       movies: this.cache.amanha.movies,
       scrapedAt: this.cache.amanha.scrapedAt,
@@ -102,14 +136,14 @@ class MovieCache {
    * @param {array} movies - lista de filmes
    * @param {string} scrapedAt - data ISO de quando foi feito o scrape
    */
-  async setToday(movies, scrapedAt) {
+  setToday(movies, scrapedAt) {
     this.cache.hoje = {
       movies,
       scrapedAt,
-      expiresAt: this.getMidnightTimestamp(),
     };
-    await this.save();
-    console.log('💾 Cache de Filmes de Hoje salvo');
+    this.save();
+    const date = this.extractDateFromISO(scrapedAt);
+    console.log(`💾 Cache de Filmes de Hoje salvo (data: ${date})`);
   }
 
   /**
@@ -117,15 +151,16 @@ class MovieCache {
    * @param {array} movies - lista de filmes
    * @param {string} scrapedAt - data ISO de quando foi feito o scrape
    */
-  async setAmanha(movies, scrapedAt) {
+  setAmanha(movies, scrapedAt) {
     this.cache.amanha = {
       movies,
       scrapedAt,
-      expiresAt: this.getMidnightTimestamp(),
     };
-    await this.save();
-    console.log('💾 Cache de Filmes de Amanhã salvo');
+    this.save();
+    const date = this.extractDateFromISO(scrapedAt);
+    console.log(`💾 Cache de Filmes de Amanhã salvo (data: ${date})`);
   }
 }
 
 export default MovieCache;
+
