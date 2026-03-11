@@ -37,9 +37,24 @@ const cache = new NormalizedCache();
 // --- Configuração de cinemas ---
 
 const CINEMAS = [
-  { id: '1162', name: 'Cinesystem', label: 'Cinesystem (Parque Shopping Maceió)', url: 'https://www.ingresso.com/cinema/cinesystem-maceio?city=maceio' },
-  { id: '1230', name: 'Centerplex', label: 'Centerplex (Shopping Pátio Maceió)', url: 'https://www.ingresso.com/cinema/centerplex-shopping-patio-maceio?city=maceio' },
-  { id: '924', name: 'Kinoplex', label: 'Kinoplex (Maceió Shopping)', url: 'https://www.ingresso.com/cinema/kinoplex-maceio?city=maceio' },
+  {
+    id: '1162',
+    name: 'Cinesystem',
+    label: 'Cinesystem (Parque Shopping Maceió)',
+    url: 'https://www.ingresso.com/cinema/cinesystem-maceio?city=maceio',
+  },
+  {
+    id: '1230',
+    name: 'Centerplex',
+    label: 'Centerplex (Shopping Pátio Maceió)',
+    url: 'https://www.ingresso.com/cinema/centerplex-shopping-patio-maceio?city=maceio',
+  },
+  {
+    id: '924',
+    name: 'Kinoplex',
+    label: 'Kinoplex (Maceió Shopping)',
+    url: 'https://www.ingresso.com/cinema/kinoplex-maceio?city=maceio',
+  },
 ];
 
 // Preferência de cinema por usuário (chatId → theaterId)
@@ -104,7 +119,12 @@ async function getMoviesForDate(date = null, theaterId = '1162') {
 
   const normalized = await fetchNormalized(date, theaterId);
   cache.mergeMovies(normalized.movies);
-  cache.setSessions(normalized.date, normalized.sessions, normalized.fetchedAt, theaterId);
+  cache.setSessions(
+    normalized.date,
+    normalized.sessions,
+    normalized.fetchedAt,
+    theaterId,
+  );
 
   const movies = denormalize(normalized.movies, normalized.sessions);
   return { movies, date: normalized.date, fromCache: false };
@@ -123,7 +143,12 @@ async function getUpcomingMovies(theaterId = '1162') {
 
 // --- Formatação ---
 
-const FORMAT_LABELS = { '2D': '2D', 'Cinépic': 'Cinépic', 'VIP': 'VIP', '3D': '3D' };
+const FORMAT_LABELS = {
+  '2D': '2D',
+  Cinépic: 'Cinépic',
+  VIP: 'VIP',
+  '3D': '3D',
+};
 
 const formatUpcomingForTelegram = async (items, cinemaLabel, limit = 10) => {
   if (!items || items.length === 0) {
@@ -157,7 +182,9 @@ const formatUpcomingForTelegram = async (items, cinemaLabel, limit = 10) => {
     }
 
     const preSale = movie.inPreSale ? ' 🔥 PRÉ-VENDA' : '';
-    const genreTag = movie.genres?.length ? ` _${movie.genres.join(', ')}_` : '';
+    const genreTag = movie.genres?.length
+      ? ` _${movie.genres.join(', ')}_`
+      : '';
     const formatTag = movie.formats?.length
       ? ` | ${movie.formats.map((f) => FORMAT_LABELS[f] || f).join(', ')}`
       : '';
@@ -185,8 +212,18 @@ const formatMoviesForTelegram = async (movies, dateStr, cinemaLabel) => {
   }
 
   const meses = [
-    'janeiro', 'fevereiro', 'março', 'abril', 'maio', 'junho',
-    'julho', 'agosto', 'setembro', 'outubro', 'novembro', 'dezembro',
+    'janeiro',
+    'fevereiro',
+    'março',
+    'abril',
+    'maio',
+    'junho',
+    'julho',
+    'agosto',
+    'setembro',
+    'outubro',
+    'novembro',
+    'dezembro',
   ];
 
   let dataPt = 'data não disponível';
@@ -201,7 +238,7 @@ const formatMoviesForTelegram = async (movies, dateStr, cinemaLabel) => {
   let message = `*🎬 PROGRAMAÇÃO*\n📍 ${cinemaLabel}\n`;
   message += `📅 ${dataPt}\n\n`;
 
-  const FORMAT_ICONS = { '2D': '🎞', 'Cinépic': '🖥', 'VIP': '⭐' };
+  const FORMAT_ICONS = { '2D': '🎞', Cinépic: '🖥', VIP: '⭐' };
 
   const ratingsPromises = movies.map((filme) => getMovieRatings(filme.name));
   const ratingsList = await Promise.all(ratingsPromises);
@@ -244,10 +281,244 @@ const formatMoviesForTelegram = async (movies, dateStr, cinemaLabel) => {
   return message;
 };
 
+// --- Carrossel com paginação ---
+
+const FORMAT_ICONS_CAROUSEL = { '2D': '🎞', Cinépic: '🖥', VIP: '⭐' };
+
+function formatSessionsBlock(filme) {
+  if (!filme.sessions || filme.sessions.length === 0) return '';
+  const byFormat = new Map();
+  for (const s of filme.sessions) {
+    const key = s.format || '2D';
+    if (!byFormat.has(key)) byFormat.set(key, []);
+    byFormat.get(key).push(s);
+  }
+  let block = '';
+  for (const [format, sessions] of byFormat) {
+    const icon = FORMAT_ICONS_CAROUSEL[format] || '🎬';
+    const times = sessions.map((s) => s.time).join(', ');
+    const ref = sessions.find((s) => s.priceInteira);
+    let priceTag = '';
+    if (ref?.gratuito) priceTag = ' — Gratuito ✨';
+    else if (ref?.priceInteira)
+      priceTag = ` — R$ ${ref.priceInteira.toFixed(2).replace('.', ',')}`;
+    block += `   ${icon} *${format}:* ${times}${priceTag}\n`;
+  }
+  return block;
+}
+
+async function formatSingleMovieCard(filme, cinemaLabel, dateStr) {
+  const meses = [
+    'janeiro',
+    'fevereiro',
+    'março',
+    'abril',
+    'maio',
+    'junho',
+    'julho',
+    'agosto',
+    'setembro',
+    'outubro',
+    'novembro',
+    'dezembro',
+  ];
+  let dataPt = 'data não disponível';
+  if (dateStr && typeof dateStr === 'string') {
+    const [year, month, day] = dateStr.split('-');
+    if (year && month && day) {
+      const monthIdx = parseInt(month, 10) - 1;
+      dataPt = `${parseInt(day, 10)} de ${meses[monthIdx]} de ${year}`;
+    }
+  }
+  let text = `*🎬 PROGRAMAÇÃO*\n📍 ${cinemaLabel}\n📅 ${dataPt}\n\n`;
+  text += `*🎭 ${filme.name}*\n`;
+  const ratings = await getMovieRatings(filme.name);
+  const ratingsLine = formatRatingsLine(ratings);
+  if (ratingsLine) text += ratingsLine;
+  text += formatSessionsBlock(filme);
+  return text;
+}
+
+async function formatSingleUpcomingCard(item, cinemaLabel) {
+  const now = new Date(
+    new Date().toLocaleString('en-US', { timeZone: 'America/Maceio' }),
+  );
+  const todayStr = now.toISOString().split('T')[0];
+  const diffDays = Math.ceil(
+    (new Date(item.firstDate) - new Date(todayStr)) / 86400000,
+  );
+  let quando;
+  if (diffDays === 1) quando = `amanhã (${item.firstDateFormatted})`;
+  else if (diffDays <= 7)
+    quando = `nesta *${item.firstDateDayOfWeek}* (${item.firstDateFormatted})`;
+  else quando = `em ${item.firstDateFormatted} (${item.firstDateDayOfWeek})`;
+
+  let text = `*🆕 PRÓXIMOS LANÇAMENTOS*\n📍 ${cinemaLabel}\n\n`;
+  text += `🎬 *${item.title}*${item.inPreSale ? ' 🔥 PRÉ-VENDA' : ''}\n`;
+  const ratings = await getMovieRatings(item.title);
+  const ratingsLine = formatRatingsLine(ratings);
+  if (ratingsLine) text += `   ${ratingsLine.trim()}\n`;
+  text += `   📅 Estreia ${quando}\n`;
+  if (item.genres?.length) text += `   _${item.genres.join(', ')}_\n`;
+  if (item.formats?.length) {
+    text += `   ${item.formats.map((f) => FORMAT_LABELS[f] || f).join(', ')}\n`;
+  }
+  if (item.priceFrom != null) {
+    text += `   A partir de R$ ${item.priceFrom.toFixed(2).replace('.', ',')}\n`;
+  }
+  return text;
+}
+
+/** Envia uma única mensagem com o card do filme na posição index e teclado de paginação. */
+async function sendCarouselPage(chatId, type, index, cinema) {
+  let list = [];
+  let dateStr = null;
+
+  if (type === 'hoje') {
+    const result = await getMoviesForDate(null, cinema.id);
+    list = result.movies || [];
+    dateStr = result.date;
+  } else if (type === 'amanha') {
+    const tomorrowDate = getDateString(1);
+    const result = await getMoviesForDate(tomorrowDate, cinema.id);
+    list = result.movies || [];
+    dateStr = result.date;
+  } else if (type === 'proximos') {
+    const { items } = await getUpcomingMovies(cinema.id);
+    list = items || [];
+  }
+
+  const total = list.length;
+  if (total === 0) {
+    const emptyMsg =
+      type === 'proximos'
+        ? '📭 *Nenhum lançamento próximo encontrado.*'
+        : '📭 *Nenhum filme em cartaz para esta data.*';
+    await sendWithBackButton(chatId, emptyMsg, cinema.url);
+    return;
+  }
+
+  const safeIndex = Math.max(0, Math.min(index, total - 1));
+  const item = list[safeIndex];
+
+  let text;
+  let posterUrl = null;
+  if (type === 'proximos') {
+    text = await formatSingleUpcomingCard(item, cinema.label);
+    posterUrl = item.poster || null;
+  } else {
+    text = await formatSingleMovieCard(item, cinema.label, dateStr);
+    posterUrl = item.poster || null;
+  }
+
+  const reply_markup = getCarouselKeyboard(type, safeIndex, total, cinema.url);
+  if (posterUrl) {
+    await bot.sendPhoto(chatId, posterUrl, {
+      caption: text,
+      parse_mode: 'Markdown',
+      reply_markup,
+    });
+  } else {
+    await bot.sendMessage(chatId, text, { parse_mode: 'Markdown', reply_markup });
+  }
+}
+
+/** Atualiza a mensagem do carrossel para o filme na posição index. */
+async function editCarouselPage(chatId, messageId, type, index, cinema, hasPhoto) {
+  let list = [];
+  let dateStr = null;
+
+  if (type === 'hoje') {
+    const result = await getMoviesForDate(null, cinema.id);
+    list = result.movies || [];
+    dateStr = result.date;
+  } else if (type === 'amanha') {
+    const tomorrowDate = getDateString(1);
+    const result = await getMoviesForDate(tomorrowDate, cinema.id);
+    list = result.movies || [];
+    dateStr = result.date;
+  } else if (type === 'proximos') {
+    const { items } = await getUpcomingMovies(cinema.id);
+    list = items || [];
+  }
+
+  const total = list.length;
+  const safeIndex = Math.max(0, Math.min(index, total - 1));
+  const item = list[safeIndex];
+
+  let text;
+  let posterUrl = null;
+  if (type === 'proximos') {
+    text = await formatSingleUpcomingCard(item, cinema.label);
+    posterUrl = item.poster || null;
+  } else {
+    text = await formatSingleMovieCard(item, cinema.label, dateStr);
+    posterUrl = item.poster || null;
+  }
+
+  const reply_markup = getCarouselKeyboard(type, safeIndex, total, cinema.url);
+  if (hasPhoto && posterUrl) {
+    await bot.editMessageMedia(
+      {
+        type: 'photo',
+        media: posterUrl,
+        caption: text,
+        parse_mode: 'Markdown',
+      },
+      {
+        chat_id: chatId,
+        message_id: messageId,
+        reply_markup,
+      },
+    );
+  } else {
+    await bot.editMessageText(text, {
+      chat_id: chatId,
+      message_id: messageId,
+      parse_mode: 'Markdown',
+    });
+    await bot.editMessageReplyMarkup(reply_markup, {
+      chat_id: chatId,
+      message_id: messageId,
+    });
+  }
+}
+
 // --- Keyboards e botões ---
 
 function getBackButtonMarkup(cinemaUrl) {
   const rows = [];
+  if (cinemaUrl) {
+    rows.push([{ text: '🎫 Comprar Ingressos', url: cinemaUrl }]);
+  }
+  rows.push([
+    { text: '⬅️ Voltar ao menu', callback_data: 'voltar_menu' },
+    { text: '🔄 Trocar cinema', callback_data: 'trocar_cinema' },
+  ]);
+  return { inline_keyboard: rows };
+}
+
+/** Teclado do carrossel: Anterior / Próximo + Comprar + Voltar/Trocar */
+function getCarouselKeyboard(type, index, total, cinemaUrl) {
+  const rows = [];
+
+  if (total > 1) {
+    const nav = [];
+    if (index > 0) {
+      nav.push({
+        text: '◀ Anterior',
+        callback_data: `carousel_${type}_${index - 1}_${total}`,
+      });
+    }
+    if (index < total - 1) {
+      nav.push({
+        text: 'Próximo ▶',
+        callback_data: `carousel_${type}_${index + 1}_${total}`,
+      });
+    }
+    if (nav.length > 0) rows.push(nav);
+  }
+
   if (cinemaUrl) {
     rows.push([{ text: '🎫 Comprar Ingressos', url: cinemaUrl }]);
   }
@@ -271,7 +542,12 @@ const getMainKeyboard = () => ({
       { text: '🎬 Filmes de Hoje', callback_data: 'filmes_hoje' },
       { text: '📅 Filmes de Amanhã', callback_data: 'filmes_amanha' },
     ],
-    [{ text: '🆕 Próximos Lançamentos', callback_data: 'proximos_lancamentos' }],
+    [
+      {
+        text: '🆕 Próximos Lançamentos',
+        callback_data: 'proximos_lancamentos',
+      },
+    ],
     [{ text: '🔄 Trocar de Cinema', callback_data: 'trocar_cinema' }],
   ],
 });
@@ -282,7 +558,10 @@ const setCommands = async () => {
   try {
     await bot.setMyCommands([
       { command: 'start', description: 'Iniciar o bot e escolher cinema' },
-      { command: 'hoje', description: 'Filmes em cartaz no cinema selecionado' },
+      {
+        command: 'hoje',
+        description: 'Filmes em cartaz no cinema selecionado',
+      },
       { command: 'proximos', description: 'Lançamentos futuros e pré-vendas' },
       { command: 'cinemas', description: 'Trocar de cinema selecionado' },
     ]);
@@ -314,13 +593,18 @@ bot.onText(/\/hoje/, async (msg) => {
   const cinema = getUserCinema(chatId);
   if (!cinema) return askCinemaFirst(chatId);
 
-  const loadingMsg = await bot.sendMessage(chatId, '⏳ Buscando filmes de hoje...');
+  const loadingMsg = await bot.sendMessage(
+    chatId,
+    '⏳ Buscando filmes de hoje...',
+  );
 
   try {
     const { movies, date } = await getMoviesForDate(null, cinema.id);
     await bot.deleteMessage(chatId, loadingMsg.message_id).catch(() => {});
-    await sendWithBackButton(chatId, await formatMoviesForTelegram(movies, date, cinema.label), cinema.url);
-    console.log(`✅ /hoje enviado para ${msg.from.username || chatId} (${cinema.name})`);
+    await sendCarouselPage(chatId, 'hoje', 0, cinema);
+    console.log(
+      `✅ /hoje enviado para ${msg.from.username || chatId} (${cinema.name})`,
+    );
   } catch (err) {
     await bot.deleteMessage(chatId, loadingMsg.message_id).catch(() => {});
     await bot.sendMessage(chatId, `❌ Erro ao buscar filmes: ${err.message}`);
@@ -333,16 +617,24 @@ bot.onText(/\/proximos/, async (msg) => {
   const cinema = getUserCinema(chatId);
   if (!cinema) return askCinemaFirst(chatId);
 
-  const loadingMsg = await bot.sendMessage(chatId, '⏳ Buscando próximos lançamentos...');
+  const loadingMsg = await bot.sendMessage(
+    chatId,
+    '⏳ Buscando próximos lançamentos...',
+  );
 
   try {
     const { items } = await getUpcomingMovies(cinema.id);
     await bot.deleteMessage(chatId, loadingMsg.message_id).catch(() => {});
-    await sendWithBackButton(chatId, await formatUpcomingForTelegram(items, cinema.label), cinema.url);
-    console.log(`✅ /proximos enviado para ${msg.from.username || chatId} (${cinema.name}, ${items.length} filmes)`);
+    await sendCarouselPage(chatId, 'proximos', 0, cinema);
+    console.log(
+      `✅ /proximos enviado para ${msg.from.username || chatId} (${cinema.name}, ${items.length} filmes)`,
+    );
   } catch (err) {
     await bot.deleteMessage(chatId, loadingMsg.message_id).catch(() => {});
-    await bot.sendMessage(chatId, `❌ Erro ao buscar lançamentos: ${err.message}`);
+    await bot.sendMessage(
+      chatId,
+      `❌ Erro ao buscar lançamentos: ${err.message}`,
+    );
     console.error(`❌ Erro em /proximos para ${chatId}:`, err.message);
   }
 });
@@ -365,17 +657,26 @@ bot.onText(/\/atualizar/, async (msg) => {
   const cinema = getUserCinema(chatId);
   if (!cinema) return askCinemaFirst(chatId);
 
-  const loadingMsg = await bot.sendMessage(chatId, '🔄 Atualizando programação de hoje...');
+  const loadingMsg = await bot.sendMessage(
+    chatId,
+    '🔄 Atualizando programação de hoje...',
+  );
 
   try {
     const normalized = await fetchNormalized(null, cinema.id);
     cache.mergeMovies(normalized.movies);
-    cache.setSessions(normalized.date, normalized.sessions, normalized.fetchedAt, cinema.id);
+    cache.setSessions(
+      normalized.date,
+      normalized.sessions,
+      normalized.fetchedAt,
+      cinema.id,
+    );
 
-    const movies = denormalize(normalized.movies, normalized.sessions);
     await bot.deleteMessage(chatId, loadingMsg.message_id).catch(() => {});
-    await sendWithBackButton(chatId, await formatMoviesForTelegram(movies, normalized.date, cinema.label), cinema.url);
-    console.log(`✅ /atualizar enviado para ${msg.from.username || chatId} (${cinema.name})`);
+    await sendCarouselPage(chatId, 'hoje', 0, cinema);
+    console.log(
+      `✅ /atualizar enviado para ${msg.from.username || chatId} (${cinema.name})`,
+    );
   } catch (err) {
     await bot.deleteMessage(chatId, loadingMsg.message_id).catch(() => {});
     await bot.sendMessage(chatId, `❌ Erro ao atualizar: ${err.message}`);
@@ -411,7 +712,9 @@ bot.on('callback_query', async (query) => {
         `✅ Cinema selecionado: *${cinema.label}*\n\nEscolha uma opção:`,
         { parse_mode: 'Markdown', reply_markup: getMainKeyboard() },
       );
-      console.log(`🎬 ${query.from.username || chatId} selecionou ${cinema.name}`);
+      console.log(
+        `🎬 ${query.from.username || chatId} selecionou ${cinema.name}`,
+      );
       return;
     }
 
@@ -434,6 +737,23 @@ bot.on('callback_query', async (query) => {
       return;
     }
 
+    // Navegação do carrossel (Anterior / Próximo)
+    const carouselMatch = callbackData.match(
+      /^carousel_(hoje|amanha|proximos)_(\d+)_(\d+)$/,
+    );
+    if (carouselMatch) {
+      const [, type, indexStr, totalStr] = carouselMatch;
+      const index = parseInt(indexStr, 10);
+      const messageId = query.message.message_id;
+      const hasPhoto = Array.isArray(query.message.photo) && query.message.photo.length > 0;
+      try {
+        await editCarouselPage(chatId, messageId, type, index, cinema, hasPhoto);
+      } catch (err) {
+        console.error(`❌ Erro ao editar carrossel ${type}:`, err.message);
+      }
+      return;
+    }
+
     let response = '';
 
     switch (callbackData) {
@@ -449,11 +769,13 @@ bot.on('callback_query', async (query) => {
 
         const today = await getMoviesForDate(null, cinema.id);
         if (loadingMsg) {
-          await bot.deleteMessage(chatId, loadingMsg.message_id).catch(() => {});
+          await bot
+            .deleteMessage(chatId, loadingMsg.message_id)
+            .catch(() => {});
         }
 
-        response = await formatMoviesForTelegram(today.movies, today.date, cinema.label);
-        break;
+        await sendCarouselPage(chatId, 'hoje', 0, cinema);
+        return;
       }
 
       case 'filmes_amanha': {
@@ -469,11 +791,13 @@ bot.on('callback_query', async (query) => {
 
         const tomorrow = await getMoviesForDate(tomorrowDate, cinema.id);
         if (loadingMsg) {
-          await bot.deleteMessage(chatId, loadingMsg.message_id).catch(() => {});
+          await bot
+            .deleteMessage(chatId, loadingMsg.message_id)
+            .catch(() => {});
         }
 
-        response = await formatMoviesForTelegram(tomorrow.movies, tomorrow.date, cinema.label);
-        break;
+        await sendCarouselPage(chatId, 'amanha', 0, cinema);
+        return;
       }
 
       case 'proximos_lancamentos': {
@@ -487,11 +811,13 @@ bot.on('callback_query', async (query) => {
 
         const { items } = await getUpcomingMovies(cinema.id);
         if (loadingMsg) {
-          await bot.deleteMessage(chatId, loadingMsg.message_id).catch(() => {});
+          await bot
+            .deleteMessage(chatId, loadingMsg.message_id)
+            .catch(() => {});
         }
 
-        response = await formatUpcomingForTelegram(items, cinema.label);
-        break;
+        await sendCarouselPage(chatId, 'proximos', 0, cinema);
+        return;
       }
 
       case 'voltar_menu': {
@@ -520,10 +846,14 @@ bot.on('callback_query', async (query) => {
     }
 
     await sendWithBackButton(chatId, response, cinema.url);
-    console.log(`✅ Callback ${callbackData} respondido para ${query.from.username || chatId}`);
+    console.log(
+      `✅ Callback ${callbackData} respondido para ${query.from.username || chatId}`,
+    );
   } catch (err) {
     console.error(`❌ Erro ao processar ${callbackData}:`, err.message);
-    await bot.sendMessage(chatId, `❌ Erro ao processar: ${err.message}`).catch(() => {});
+    await bot
+      .sendMessage(chatId, `❌ Erro ao processar: ${err.message}`)
+      .catch(() => {});
   }
 });
 
@@ -543,7 +873,9 @@ bot.on('polling_error', (err) => {
   console.error('❌ Erro de polling:', err.message);
 
   if (err.code === 409 || err.message.includes('terminated by other')) {
-    console.log('⏳ Outra instância do bot detectada, aguardando 5 segundos antes de reintentar...');
+    console.log(
+      '⏳ Outra instância do bot detectada, aguardando 5 segundos antes de reintentar...',
+    );
     setTimeout(() => {
       console.log('🔄 Tentando reconectar ao Telegram...');
     }, 5000);

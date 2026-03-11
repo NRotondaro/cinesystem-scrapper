@@ -57,16 +57,15 @@ export async function fetchNormalized(date = null, theaterId = DEFAULT_THEATER_I
 }
 
 /**
- * Busca próximos lançamentos exclusivos do Cinesystem Maceió.
+ * Busca próximos lançamentos (apenas em pré-venda).
  *
- * Usa o endpoint de sessões sem filtro de data (retorna todas as datas
- * disponíveis em uma única chamada), identifica filmes que ainda não
- * estão em cartaz hoje, e extrai dados relevantes para a UI.
+ * Usa o endpoint de sessões sem filtro de data, identifica filmes em datas
+ * futuras que estão em pré-venda e retorna só esses.
  *
  * @returns {Promise<{ items: Array, fetchedAt: string }>}
  */
 export async function fetchUpcoming(theaterId = DEFAULT_THEATER_ID) {
-  console.log(`🆕 Buscando próximos lançamentos (teatro ${theaterId})...`);
+  console.log(`🆕 Buscando próximos lançamentos - pré-venda (teatro ${theaterId})...`);
 
   const { data: response } = await axios.get(
     `${BASE_URL}/v0/sessions/city/${CITY_ID}/theater/${theaterId}`,
@@ -76,13 +75,20 @@ export async function fetchUpcoming(theaterId = DEFAULT_THEATER_ID) {
   const allDates = Array.isArray(response) ? response : [];
   const today = getTodayInMaceioISO();
 
-  const todayEntry = allDates.find((d) => d.date === today);
-  const todayMovieIds = new Set((todayEntry?.movies || []).map((m) => m.id));
+  // Filmes em qualquer data <= hoje contam como "já em cartaz"
+  const todayLikeEntries = allDates.filter((d) => d.date <= today);
+  const todayMovieIds = new Set();
+  for (const entry of todayLikeEntries) {
+    for (const m of entry.movies || []) {
+      todayMovieIds.add(m.id);
+    }
+  }
 
   const futureDates = allDates.filter((d) => d.date > today);
 
-  const items = normalizeUpcomingFromSessions(futureDates, todayMovieIds);
-  console.log(`✅ ${items.length} lançamento(s) futuro(s)`);
+  let items = normalizeUpcomingFromSessions(futureDates, todayMovieIds);
+  items = items.filter((item) => item.inPreSale === true);
+  console.log(`✅ ${items.length} lançamento(s) em pré-venda`);
 
   return { items, fetchedAt: new Date().toISOString() };
 }
