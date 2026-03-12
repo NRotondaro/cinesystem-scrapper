@@ -249,9 +249,6 @@ const formatMoviesForTelegram = async (movies, dateStr, cinemaLabel) => {
 
   movies.forEach((filme, index) => {
     message += `*${filme.name}*\n`;
-    const ratingsLine = formatRatingsLine(ratingsList[index]);
-    if (ratingsLine) message += ratingsLine;
-
     const genres =
       Array.isArray(filme.genres) && filme.genres.length
         ? filme.genres.join(', ')
@@ -259,10 +256,15 @@ const formatMoviesForTelegram = async (movies, dateStr, cinemaLabel) => {
     const contentRating = formatContentRatingForTelegram(filme.contentRating);
     if (genres || contentRating) {
       let infoLine = '   ';
-      if (contentRating) infoLine += contentRating;
+      if (contentRating) {
+        infoLine += `🎟 Classificação etária: ${contentRating}`;
+      }
       if (genres) infoLine += contentRating ? ` — _${genres}_` : `_${genres}_`;
       message += `${infoLine}\n`;
     }
+
+    const ratingsLine = formatRatingsLine(ratingsList[index]);
+    if (ratingsLine) message += ratingsLine;
 
     if (!filme.sessions || filme.sessions.length === 0) {
       message += '\n';
@@ -275,6 +277,8 @@ const formatMoviesForTelegram = async (movies, dateStr, cinemaLabel) => {
       if (!byFormat.has(key)) byFormat.set(key, []);
       byFormat.get(key).push(s);
     }
+
+    message += '   🕒 Sessões (preços para ingresso inteira):\n';
 
     for (const [format, sessions] of byFormat) {
       const icon = FORMAT_ICONS[format] || '🎬';
@@ -291,7 +295,7 @@ const formatMoviesForTelegram = async (movies, dateStr, cinemaLabel) => {
       message += `   ${icon} *${format}:* ${times}${priceTag}\n`;
     }
 
-    message += '\n';
+    message += '   ℹ️ Preços listados para ingresso inteira.\n\n';
   });
 
   return message;
@@ -327,7 +331,7 @@ function formatSessionsBlock(filme) {
     if (!byFormat.has(key)) byFormat.set(key, []);
     byFormat.get(key).push(s);
   }
-  let block = '';
+  let block = '   🕒 Sessões (preços para ingresso inteira):\n';
   for (const [format, sessions] of byFormat) {
     const icon = FORMAT_ICONS_CAROUSEL[format] || '🎬';
     const times = sessions.map((s) => s.time).join(', ');
@@ -366,10 +370,6 @@ async function formatSingleMovieCard(filme, cinemaLabel, dateStr) {
   }
   let text = `*🎬 PROGRAMAÇÃO*\n📍 ${cinemaLabel}\n📅 ${dataPt}\n\n`;
   text += `*${filme.name}*\n`;
-  const ratings = await getMovieRatings(filme.originalTitle || filme.name);
-  const ratingsLine = formatRatingsLine(ratings);
-  if (ratingsLine) text += ratingsLine;
-
   const genres =
     Array.isArray(filme.genres) && filme.genres.length
       ? filme.genres.join(', ')
@@ -377,10 +377,15 @@ async function formatSingleMovieCard(filme, cinemaLabel, dateStr) {
   const contentRating = formatContentRatingForTelegram(filme.contentRating);
   if (genres || contentRating) {
     let infoLine = '   ';
-    if (contentRating) infoLine += contentRating;
+    if (contentRating) {
+      infoLine += `🎟 Classificação etária: ${contentRating}`;
+    }
     if (genres) infoLine += contentRating ? ` — _${genres}_` : `_${genres}_`;
     text += `${infoLine}\n`;
   }
+  const ratings = await getMovieRatings(filme.originalTitle || filme.name);
+  const ratingsLine = formatRatingsLine(ratings);
+  if (ratingsLine) text += ratingsLine;
   text += formatSessionsBlock(filme);
   return text;
 }

@@ -142,11 +142,15 @@ export async function getMovieRatings(title, year = null) {
 export function formatRatingsLine(ratings) {
   if (!ratings) return '';
   const parts = [];
-  if (ratings.imdb) parts.push(`⭐ IMDB ${ratings.imdb}`);
-  if (ratings.rottenTomatoes) parts.push(`🍅 RT ${ratings.rottenTomatoes}`);
-  if (ratings.tmdb) parts.push(`⭐ TMDB ${ratings.tmdb}`);
+
+  if (ratings.imdb) parts.push(`⭐ IMDb: ${ratings.imdb}/10`);
+  if (ratings.rottenTomatoes) parts.push(`🍅 RT: ${ratings.rottenTomatoes}`);
+  if (ratings.tmdb) parts.push(`⭐ TMDb: ${ratings.tmdb}/10`);
+
   if (parts.length === 0) return '';
-  return parts.join(' | ') + '\n';
+
+  // Linha de cabeçalho + linha com as fontes, com uma quebra entre elas
+  return `   📊 Avaliações: ${parts.join(' | ')}\n\n`;
 }
 
 export default { getMovieRatings, formatRatingsLine };
