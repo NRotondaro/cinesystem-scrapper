@@ -167,6 +167,8 @@ src/
 | --- | --- | --- | --- |
 | `TELEGRAM_BOT_TOKEN` | Sim | — | Token do bot obtido via @BotFather |
 | `PORT` | Não | `10000` | Porta do servidor (health check). No Render use a porta dinâmica `process.env.PORT` — o código já usa fallback `10000` |
+| `OMDb_API_KEY` | Não | — | Chave da [OMDb](https://www.omdbapi.com/apikey.aspx) para buscar notas do IMDb e Rotten Tomatoes. Se não definida, essas notas não são exibidas. |
+| `TMDB_API_KEY` | Não | — | Chave da [TMDb](https://www.themoviedb.org/settings/api). Usada como **fallback** para exibir nota TMDb quando a OMDb não retorna dados. |
 
 ---
 

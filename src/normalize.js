@@ -153,6 +153,7 @@ export function normalizeUpcomingFromSessions(futureDates, todayMovieIds) {
       seen.set(raw.id, {
         id: raw.id,
         title: raw.title,
+        originalTitle: raw.originalTitle || null,
         contentRating: raw.contentRating || null,
         genres: raw.genres ?? [],
         poster,

@@ -164,7 +164,9 @@ const formatUpcomingForTelegram = async (items, cinemaLabel, limit = 10) => {
 
   let message = `*🆕 PRÓXIMOS LANÇAMENTOS*\n📍 ${cinemaLabel}\n\n`;
 
-  const ratingsPromises = sliced.map((movie) => getMovieRatings(movie.title));
+  const ratingsPromises = sliced.map((movie) =>
+    getMovieRatings(movie.originalTitle || movie.title),
+  );
   const ratingsList = await Promise.all(ratingsPromises);
 
   sliced.forEach((movie, index) => {
@@ -240,7 +242,9 @@ const formatMoviesForTelegram = async (movies, dateStr, cinemaLabel) => {
 
   const FORMAT_ICONS = { '2D': '🎞', Cinépic: '🖥', VIP: '⭐' };
 
-  const ratingsPromises = movies.map((filme) => getMovieRatings(filme.name));
+  const ratingsPromises = movies.map((filme) =>
+    getMovieRatings(filme.originalTitle || filme.name),
+  );
   const ratingsList = await Promise.all(ratingsPromises);
 
   movies.forEach((filme, index) => {
@@ -332,7 +336,7 @@ async function formatSingleMovieCard(filme, cinemaLabel, dateStr) {
   }
   let text = `*🎬 PROGRAMAÇÃO*\n📍 ${cinemaLabel}\n📅 ${dataPt}\n\n`;
   text += `*🎭 ${filme.name}*\n`;
-  const ratings = await getMovieRatings(filme.name);
+  const ratings = await getMovieRatings(filme.originalTitle || filme.name);
   const ratingsLine = formatRatingsLine(ratings);
   if (ratingsLine) text += ratingsLine;
   text += formatSessionsBlock(filme);
@@ -355,7 +359,7 @@ async function formatSingleUpcomingCard(item, cinemaLabel) {
 
   let text = `*🆕 PRÓXIMOS LANÇAMENTOS*\n📍 ${cinemaLabel}\n\n`;
   text += `🎬 *${item.title}*${item.inPreSale ? ' 🔥 PRÉ-VENDA' : ''}\n`;
-  const ratings = await getMovieRatings(item.title);
+  const ratings = await getMovieRatings(item.originalTitle || item.title);
   const ratingsLine = formatRatingsLine(ratings);
   if (ratingsLine) text += `   ${ratingsLine.trim()}\n`;
   text += `   📅 Estreia ${quando}\n`;
