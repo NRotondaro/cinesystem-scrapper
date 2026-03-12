@@ -248,9 +248,21 @@ const formatMoviesForTelegram = async (movies, dateStr, cinemaLabel) => {
   const ratingsList = await Promise.all(ratingsPromises);
 
   movies.forEach((filme, index) => {
-    message += `*🎭 ${filme.name}*\n`;
+    message += `*${filme.name}*\n`;
     const ratingsLine = formatRatingsLine(ratingsList[index]);
     if (ratingsLine) message += ratingsLine;
+
+    const genres =
+      Array.isArray(filme.genres) && filme.genres.length
+        ? filme.genres.join(', ')
+        : null;
+    const contentRating = formatContentRatingForTelegram(filme.contentRating);
+    if (genres || contentRating) {
+      let infoLine = '   ';
+      if (contentRating) infoLine += contentRating;
+      if (genres) infoLine += contentRating ? ` — _${genres}_` : `_${genres}_`;
+      message += `${infoLine}\n`;
+    }
 
     if (!filme.sessions || filme.sessions.length === 0) {
       message += '\n';
@@ -284,6 +296,24 @@ const formatMoviesForTelegram = async (movies, dateStr, cinemaLabel) => {
 
   return message;
 };
+
+function formatContentRatingForTelegram(rawRating) {
+  if (!rawRating) return null;
+
+  const normalized = String(rawRating).trim().toLowerCase();
+
+  if (!normalized || normalized === 'l' || normalized === 'livre') {
+    return '🟢 Livre';
+  }
+
+  if (normalized.startsWith('10')) return '🟡 10 anos';
+  if (normalized.startsWith('12')) return '🟡 12 anos';
+  if (normalized.startsWith('14')) return '🟠 14 anos';
+  if (normalized.startsWith('16')) return '🔴 16 anos';
+  if (normalized.startsWith('18')) return '🔴 18 anos';
+
+  return `🔹 ${rawRating}`;
+}
 
 // --- Carrossel com paginação ---
 
@@ -335,10 +365,22 @@ async function formatSingleMovieCard(filme, cinemaLabel, dateStr) {
     }
   }
   let text = `*🎬 PROGRAMAÇÃO*\n📍 ${cinemaLabel}\n📅 ${dataPt}\n\n`;
-  text += `*🎭 ${filme.name}*\n`;
+  text += `*${filme.name}*\n`;
   const ratings = await getMovieRatings(filme.originalTitle || filme.name);
   const ratingsLine = formatRatingsLine(ratings);
   if (ratingsLine) text += ratingsLine;
+
+  const genres =
+    Array.isArray(filme.genres) && filme.genres.length
+      ? filme.genres.join(', ')
+      : null;
+  const contentRating = formatContentRatingForTelegram(filme.contentRating);
+  if (genres || contentRating) {
+    let infoLine = '   ';
+    if (contentRating) infoLine += contentRating;
+    if (genres) infoLine += contentRating ? ` — _${genres}_` : `_${genres}_`;
+    text += `${infoLine}\n`;
+  }
   text += formatSessionsBlock(filme);
   return text;
 }
@@ -423,12 +465,22 @@ async function sendCarouselPage(chatId, type, index, cinema) {
       reply_markup,
     });
   } else {
-    await bot.sendMessage(chatId, text, { parse_mode: 'Markdown', reply_markup });
+    await bot.sendMessage(chatId, text, {
+      parse_mode: 'Markdown',
+      reply_markup,
+    });
   }
 }
 
 /** Atualiza a mensagem do carrossel para o filme na posição index. */
-async function editCarouselPage(chatId, messageId, type, index, cinema, hasPhoto) {
+async function editCarouselPage(
+  chatId,
+  messageId,
+  type,
+  index,
+  cinema,
+  hasPhoto,
+) {
   let list = [];
   let dateStr = null;
 
@@ -749,9 +801,17 @@ bot.on('callback_query', async (query) => {
       const [, type, indexStr, totalStr] = carouselMatch;
       const index = parseInt(indexStr, 10);
       const messageId = query.message.message_id;
-      const hasPhoto = Array.isArray(query.message.photo) && query.message.photo.length > 0;
+      const hasPhoto =
+        Array.isArray(query.message.photo) && query.message.photo.length > 0;
       try {
-        await editCarouselPage(chatId, messageId, type, index, cinema, hasPhoto);
+        await editCarouselPage(
+          chatId,
+          messageId,
+          type,
+          index,
+          cinema,
+          hasPhoto,
+        );
       } catch (err) {
         console.error(`❌ Erro ao editar carrossel ${type}:`, err.message);
       }
