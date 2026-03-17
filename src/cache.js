@@ -32,6 +32,15 @@ class NormalizedCache {
     return maceio.toISOString().split('T')[0];
   }
 
+  toMaceioDateStr(isoString) {
+    return new Date(isoString).toLocaleString('en-CA', {
+      timeZone: 'America/Maceio',
+      year: 'numeric',
+      month: '2-digit',
+      day: '2-digit',
+    });
+  }
+
   load() {
     try {
       if (fs.existsSync(CACHE_FILE)) {
@@ -39,7 +48,7 @@ class NormalizedCache {
       }
     } catch (err) {
       console.warn('⚠️  Cache corrompido, reinicializando:', err.message);
-      this.data = { movies: {}, sessions: {}, upcoming: null, moviesUpdatedAt: null };
+      this.data = { movies: {}, sessions: {}, upcoming: {}, moviesUpdatedAt: null };
     }
   }
 
@@ -96,7 +105,7 @@ class NormalizedCache {
     const cached = theaterSessions[date];
     if (!cached?.fetchedAt) return null;
 
-    const cachedDay = cached.fetchedAt.split('T')[0];
+    const cachedDay = this.toMaceioDateStr(cached.fetchedAt);
     const today = this.getMaceioDate(0);
 
     if (cachedDay !== today) {
@@ -143,7 +152,7 @@ class NormalizedCache {
     const cached = this.data.upcoming?.[theaterId];
     if (!cached?.fetchedAt) return null;
 
-    const cachedDay = cached.fetchedAt.split('T')[0];
+    const cachedDay = this.toMaceioDateStr(cached.fetchedAt);
     const today = this.getMaceioDate(0);
 
     if (cachedDay !== today) {
