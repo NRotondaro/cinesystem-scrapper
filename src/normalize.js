@@ -37,9 +37,7 @@ export function extractMovieStatic(raw) {
     poster,
     backdrop,
     trailer,
-    tags: (raw.completeTags || raw.tags || []).map((t) =>
-      typeof t === 'string' ? t : t.name,
-    ),
+    tags: (raw.completeTags || raw.tags || []).map((t) => (typeof t === 'string' ? t : t.name)),
     isReexhibition: raw.isReexhibition ?? false,
     inPreSale: raw.inPreSale ?? false,
   };
@@ -58,8 +56,10 @@ export function extractSessions(movieId, sessionTypes) {
 
   for (const group of sessionTypes || []) {
     for (const s of group.sessions || []) {
-      const format = s.types?.find((t) => t.name !== 'Dublado' && t.name !== 'Legendado')?.alias ?? '2D';
-      const audio = s.types?.find((t) => t.name === 'Dublado' || t.name === 'Legendado')?.alias ?? null;
+      const format =
+        s.types?.find((t) => t.name !== 'Dublado' && t.name !== 'Legendado')?.alias ?? '2D';
+      const audio =
+        s.types?.find((t) => t.name === 'Dublado' || t.name === 'Legendado')?.alias ?? null;
 
       sessions.push({
         id: s.id,

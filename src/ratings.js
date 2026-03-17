@@ -27,9 +27,7 @@ function cacheKey(title, year) {
  */
 function extractRottenTomatoes(ratings) {
   if (!Array.isArray(ratings)) return null;
-  const rt = ratings.find(
-    (r) => r.Source && r.Source.toLowerCase().includes('rotten tomatoes'),
-  );
+  const rt = ratings.find((r) => r.Source && r.Source.toLowerCase().includes('rotten tomatoes'));
   if (!rt || !rt.Value) return null;
   const value = String(rt.Value).trim();
   if (value === 'N/A') return null;
@@ -60,10 +58,7 @@ async function fetchFromOmdb(title, year) {
     return null;
   }
 
-  const imdb =
-    data.imdbRating && data.imdbRating !== 'N/A'
-      ? String(data.imdbRating).trim()
-      : null;
+  const imdb = data.imdbRating && data.imdbRating !== 'N/A' ? String(data.imdbRating).trim() : null;
   const rottenTomatoes = extractRottenTomatoes(data.Ratings || []);
 
   return imdb || rottenTomatoes
