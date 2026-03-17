@@ -100,12 +100,12 @@ app.get('/', (req, res) => {
 // --- Helpers ---
 
 const getDateString = (daysOffset = 0) => {
-  const date = new Date();
-  date.setDate(date.getDate() + daysOffset);
-  const day = String(date.getDate()).padStart(2, '0');
-  const month = String(date.getMonth() + 1).padStart(2, '0');
-  const year = date.getFullYear();
-  return `${year}-${month}-${day}`;
+  const now = new Date();
+  const maceio = new Date(
+    now.toLocaleString('en-US', { timeZone: 'America/Maceio' }),
+  );
+  maceio.setDate(maceio.getDate() + daysOffset);
+  return maceio.toISOString().split('T')[0];
 };
 
 async function getMoviesForDate(date = null, theaterId = '1162') {
