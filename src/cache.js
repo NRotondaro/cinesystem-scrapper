@@ -25,9 +25,7 @@ class NormalizedCache {
 
   getMaceioDate(offsetDays = 0) {
     const now = new Date();
-    const maceio = new Date(
-      now.toLocaleString('en-US', { timeZone: 'America/Maceio' }),
-    );
+    const maceio = new Date(now.toLocaleString('en-US', { timeZone: 'America/Maceio' }));
     maceio.setDate(maceio.getDate() + offsetDays);
     return maceio.toISOString().split('T')[0];
   }
@@ -156,7 +154,9 @@ class NormalizedCache {
     const today = this.getMaceioDate(0);
 
     if (cachedDay !== today) {
-      console.log(`📅 Cache de lançamentos expirado para teatro ${theaterId} (${cachedDay} → ${today})`);
+      console.log(
+        `📅 Cache de lançamentos expirado para teatro ${theaterId} (${cachedDay} → ${today})`,
+      );
       delete this.data.upcoming[theaterId];
       return null;
     }
