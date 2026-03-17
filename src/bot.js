@@ -22,12 +22,7 @@ if (!token) {
   throw new Error('TELEGRAM_BOT_TOKEN não configurado no .env');
 }
 
-const bot = new TelegramBot(token, {
-  polling: {
-    interval: 1000,
-    params: { timeout: 30 },
-  },
-});
+const bot = new TelegramBot(token, { polling: false });
 
 const PORT = process.env.PORT || 10000;
 const app = express();
@@ -938,16 +933,43 @@ bot.on('message', (msg) => {
 });
 
 // Handler de erro
+let pollingRetries = 0;
+const MAX_POLLING_RETRIES = 5;
+
 bot.on('polling_error', (err) => {
   console.error('❌ Erro de polling:', err.message);
 
   if (err.code === 409 || err.message.includes('terminated by other')) {
+    pollingRetries++;
+    if (pollingRetries > MAX_POLLING_RETRIES) {
+      console.error(
+        `💀 Falha após ${MAX_POLLING_RETRIES} tentativas. Outra instância continua ativa — encerrando.`,
+      );
+      shutdown('POLLING_CONFLICT');
+      return;
+    }
+    const delay = Math.min(pollingRetries * 5, 30) * 1000;
     console.log(
-      '⏳ Outra instância do bot detectada, aguardando 5 segundos antes de reintentar...',
+      `⏳ Outra instância detectada (tentativa ${pollingRetries}/${MAX_POLLING_RETRIES}). Reconectando em ${delay / 1000}s...`,
     );
-    setTimeout(() => {
-      console.log('🔄 Tentando reconectar ao Telegram...');
-    }, 5000);
+    bot.stopPolling().then(() => {
+      setTimeout(async () => {
+        try {
+          await bot.deleteWebHook({ drop_pending_updates: true });
+          bot.startPolling({ restart: true });
+          console.log('🔄 Polling reiniciado.');
+        } catch (retryErr) {
+          console.error('❌ Erro ao reiniciar polling:', retryErr.message);
+        }
+      }, delay);
+    });
+  }
+});
+
+bot.on('polling', () => {
+  if (pollingRetries > 0) {
+    console.log('✅ Polling restabelecido com sucesso.');
+    pollingRetries = 0;
   }
 });
 
@@ -955,6 +977,16 @@ bot.on('polling_error', (err) => {
 (async () => {
   await cache.load();
   await setCommands();
+
+  // Limpa webhook/conexão anterior para evitar conflito 409 com outra instância
+  try {
+    await bot.deleteWebHook({ drop_pending_updates: true });
+    console.log('✅ Webhook removido, polling liberado.');
+  } catch (err) {
+    console.warn('⚠️ Erro ao remover webhook:', err.message);
+  }
+
+  bot.startPolling({ restart: true });
 
   server = app.listen(PORT, '0.0.0.0', () => {
     console.log(`✅ Bot subiu na porta ${PORT} (host 0.0.0.0)`);
